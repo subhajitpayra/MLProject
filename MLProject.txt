@@ -1,0 +1,384 @@
+QUESTION 
+
+Design & Implement Neural network models (Perceprton,SVM,LVQ,SOM) on Real Estate Valuation
+https://github.com/subhajitpayra/MLProject.git
+
+#####################################################################################################################
+#####################################################################################################################
+
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.linear_model import LinearRegression, Lasso, Ridge
+from sklearn.neighbors import KNeighborsRegressor
+from sklearn.neural_network import MLPRegressor
+from sklearn.tree import DecisionTreeRegressor
+from sklearn.model_selection import train_test_split, GridSearchCV, cross_val_score, cross_val_predict, KFold
+import xgboost as xgb
+from sklearn.preprocessing import StandardScaler, PolynomialFeatures
+from sklearn.pipeline import Pipeline
+
+plt.style.use('seaborn')
+
+file = pd.read_csv('Realestate.csv', sep=';')
+df = pd.DataFrame(file)
+
+
+def preprocessing(data):
+
+    #Do first stage pre-processing (i.e. exclude non-numeric prices and convert prices to numeric variables)
+
+    data = data[data.price_new.str.contains("aanvraag") == False].dropna()
+    data[['price_new']] = data[['price_new']].apply(pd.to_numeric)
+
+    # exclude everything with a price above or below 3 standard deviations (i.e. outliers)
+
+    data = data[np.abs(data["price_new"]-data["price_new"].mean())<=(3*data["price_new"].std())]
+
+    # Set x and y (dropping zipcode and rooms as latitude, longitude and surface pretty much capture the former)
+
+    y = data.price_new
+    X = data.drop('price_new', axis = 1).drop('zipcode_new', axis = 1).drop('rooms_new', axis = 1)
+
+    return X, y
+
+def model(pipeline, parameters, X_train, y_train, X, y):
+
+    grid_obj = GridSearchCV(estimator=pipeline,
+                            param_grid=parameters,
+                            cv=3,
+                            scoring='r2',
+                            verbose=2,
+                            n_jobs=1,
+                            refit=True)
+    grid_obj.fit(X_train, y_train)
+
+    '''Results'''
+
+    results = pd.DataFrame(pd.DataFrame(grid_obj.cv_results_))
+    results_sorted = results.sort_values(by=['mean_test_score'], ascending=False)
+
+    print("##### Results")
+    print(results_sorted)
+
+    print("best_index", grid_obj.best_index_)
+    print("best_score", grid_obj.best_score_)
+    print("best_params", grid_obj.best_params_)
+
+    '''Cross Validation'''
+
+    estimator = grid_obj.best_estimator_
+    '''
+    if estimator.named_steps['scl'] == True:
+        X = (X - X.mean()) / (X.std())
+        y = (y - y.mean()) / (y.std())
+    '''
+    shuffle = KFold(n_splits=5,
+                    shuffle=True,
+                    random_state=0)
+    cv_scores = cross_val_score(estimator,
+                                X,
+                                y.values.ravel(),
+                                cv=shuffle,
+                                scoring='r2')
+    print("##### CV Results")
+    print("mean_score", cv_scores.mean())
+
+    '''Show model coefficients or feature importances'''
+
+    try:
+        print("Model coefficients: ", list(zip(list(X), estimator.named_steps['clf'].coef_)))
+    except:
+        print("Model does not support model coefficients")
+
+    try:
+        print("Feature importances: ", list(zip(list(X), estimator.named_steps['clf'].feature_importances_)))
+    except:
+        print("Model does not support feature importances")
+
+    '''Predict along CV and plot y vs. y_predicted in scatter'''
+
+    y_pred = cross_val_predict(estimator, X, y, cv=shuffle)
+
+    plt.scatter(y, y_pred)
+    xmin, xmax = plt.xlim()
+    ymin, ymax = plt.ylim()
+    plt.plot([xmin, xmax], [ymin, ymax], "g--", lw=1, alpha=0.4)
+    plt.xlabel("True prices")
+    plt.ylabel("Predicted prices")
+    plt.annotate(' R-squared CV = {}'.format(round(float(cv_scores.mean()), 3)), size=9,
+             xy=(xmin,ymax), xytext=(10, -15), textcoords='offset points')
+    plt.annotate(grid_obj.best_params_, size=9,
+                 xy=(xmin, ymax), xytext=(10, -35), textcoords='offset points', wrap=True)
+    plt.title('Predicted prices (EUR) vs. True prices (EUR)')
+    plt.show()
+
+# Pipeline and Parameters - MLP Regression
+
+pipe_neural = Pipeline([('scl', StandardScaler()),
+                        ('clf', MLPRegressor())])
+
+param_neural = {'clf__alpha': [0.001, 0.01, 0.1, 1, 10, 100],
+                'clf__hidden_layer_sizes': [(5),(10,10),(7,7,7)],
+                'clf__solver': ['lbfgs'],
+                'clf__activation': ['relu', 'tanh'],
+                'clf__learning_rate' : ['constant', 'invscaling']}
+
+# Execute preprocessing & train/test split
+
+X, y = preprocessing(df)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.33, random_state=0)
+
+# Execute model hyperparameter tuning and crossvalidation
+
+model(pipe_neural, param_neural, X_train, y_train, X, y)
+
+#############################################################################################
+#############################################################################################
+#############################################################################################
+
+
+import pandas as pd
+data = pd.read_csv("Realestate.csv")
+from sklearn.model_selection import train_test_split
+training_set, test_set = train_test_split(data, test_size = 0.2, random_state = 1)
+X_train = training_set.iloc[:,0:2].values
+Y_train = training_set.iloc[:,2].values
+X_test = test_set.iloc[:,0:2].values
+Y_test = test_set.iloc[:,2].values
+from sklearn.svm import SVC
+classifier = SVC(kernel='rbf', random_state = 1)
+classifier.fit(X_train,Y_train)
+Y_pred = classifier.predict(X_test)
+test_set["Predictions"] = Y_pred
+from sklearn.metrics import confusion_matrix
+cm = confusion_matrix(Y_test,Y_pred)
+accuracy = float(cm.diagonal().sum())/len(Y_test)
+print("\nAccuracy Of SVM For The Given Dataset : ", accuracy)
+from sklearn.preprocessing import LabelEncoder
+le = LabelEncoder()
+Y_train = le.fit_transform(Y_train)
+from sklearn.svm import SVC
+classifier = SVC(kernel='rbf', random_state = 1)
+classifier.fit(X_train,Y_train
+               import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.colors import ListedColormap
+plt.figure(figsize = (7,7))
+X_set, y_set = X_train, Y_train
+X1, X2 = np.meshgrid(np.arange(start = X_set[:, 0].min() - 1, stop = X_set[:, 0].max() + 1, step = 0.01), np.arange(start = X_set[:, 1].min() - 1, stop = X_set[:, 1].max() + 1, step = 0.01))
+plt.contourf(X1, X2, classifier.predict(np.array([X1.ravel(), X2.ravel()]).T).reshape(X1.shape), alpha = 0.75, cmap = ListedColormap(('black', 'white')))
+plt.xlim(X1.min(), X1.max())
+plt.ylim(X2.min(), X2.max())
+for i, j in enumerate(np.unique(y_set)):
+plt.scatter(X_set[y_set == j, 0], X_set[y_set == j, 1], c = ListedColormap(('red', 'orange'))(i), label = j)
+plt.title('Apples Vs Oranges')
+plt.xlabel('Weight In Grams')
+plt.ylabel('Size in cm')
+plt.legend()
+plt.show()
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.colors import ListedColormap
+plt.figure(figsize = (7,7))
+X_set, y_set = X_test, Y_test
+X1, X2 = np.meshgrid(np.arange(start = X_set[:, 0].min() - 1, stop = X_set[:, 0].max() + 1, step = 0.01),np.arange(start = X_set[:, 1].min() - 1, stop = X_set[:, 1].max() + 1, step = 0.01))
+plt.contourf(X1, X2, classifier.predict(np.array([X1.ravel(), X2.ravel()]).T).reshape(X1.shape),alpha = 0.75, cmap = ListedColormap(('black', 'white')))
+plt.xlim(X1.min(), X1.max())
+plt.ylim(X2.min(), X2.max())
+for i, j in enumerate(np.unique(y_set)):
+plt.scatter(X_set[y_set == j, 0], X_set[y_set == j, 1],c = ListedColormap(('red', 'orange'))(i), label = j)
+plt.title('Apples Vs Oranges Predictions')
+plt.xlabel('Weight In Grams')
+plt.ylabel('Size in cm')
+plt.legend()
+plt.show()
+
+#######################################################################################################################
+#######################################################################################################################
+#######################################################################################################################
+
+
+# LVQ for the Ionosphere Dataset
+from random import seed
+from random import randrange
+from csv import reader
+from math import sqrt
+
+# Load a CSV file
+def load_csv(filename):
+	dataset = list()
+	with open(filename, 'r') as file:
+		csv_reader = reader(file)
+		for row in csv_reader:
+			if not row:
+				continue
+			dataset.append(row)
+	return dataset
+
+# Convert string column to float
+def str_column_to_float(dataset, column):
+	for row in dataset:
+		row[column] = float(row[column].strip())
+
+# Convert string column to integer
+def str_column_to_int(dataset, column):
+	class_values = [row[column] for row in dataset]
+	unique = set(class_values)
+	lookup = dict()
+	for i, value in enumerate(unique):
+		lookup[value] = i
+	for row in dataset:
+		row[column] = lookup[row[column]]
+	return lookup
+
+# Split a dataset into k folds
+def cross_validation_split(dataset, n_folds):
+	dataset_split = list()
+	dataset_copy = list(dataset)
+	fold_size = int(len(dataset) / n_folds)
+	for i in range(n_folds):
+		fold = list()
+		while len(fold) < fold_size:
+			index = randrange(len(dataset_copy))
+			fold.append(dataset_copy.pop(index))
+		dataset_split.append(fold)
+	return dataset_split
+
+# Calculate accuracy percentage
+def accuracy_metric(actual, predicted):
+	correct = 0
+	for i in range(len(actual)):
+		if actual[i] == predicted[i]:
+			correct += 1
+	return correct / float(len(actual)) * 100.0
+
+# Evaluate an algorithm using a cross validation split
+def evaluate_algorithm(dataset, algorithm, n_folds, *args):
+	folds = cross_validation_split(dataset, n_folds)
+	scores = list()
+	for fold in folds:
+		train_set = list(folds)
+		train_set.remove(fold)
+		train_set = sum(train_set, [])
+		test_set = list()
+		for row in fold:
+			row_copy = list(row)
+			test_set.append(row_copy)
+			row_copy[-1] = None
+		predicted = algorithm(train_set, test_set, *args)
+		actual = [row[-1] for row in fold]
+		accuracy = accuracy_metric(actual, predicted)
+		scores.append(accuracy)
+	return scores
+
+# calculate the Euclidean distance between two vectors
+def euclidean_distance(row1, row2):
+	distance = 0.0
+	for i in range(len(row1)-1):
+		distance += (row1[i] - row2[i])**2
+	return sqrt(distance)
+
+# Locate the best matching unit
+def get_best_matching_unit(codebooks, test_row):
+	distances = list()
+	for codebook in codebooks:
+		dist = euclidean_distance(codebook, test_row)
+		distances.append((codebook, dist))
+	distances.sort(key=lambda tup: tup[1])
+	return distances[0][0]
+
+# Make a prediction with codebook vectors
+def predict(codebooks, test_row):
+	bmu = get_best_matching_unit(codebooks, test_row)
+	return bmu[-1]
+
+# Create a random codebook vector
+def random_codebook(train):
+	n_records = len(train)
+	n_features = len(train[0])
+	codebook = [train[randrange(n_records)][i] for i in range(n_features)]
+	return codebook
+
+# Train a set of codebook vectors
+def train_codebooks(train, n_codebooks, lrate, epochs):
+	codebooks = [random_codebook(train) for i in range(n_codebooks)]
+	for epoch in range(epochs):
+		rate = lrate * (1.0-(epoch/float(epochs)))
+		for row in train:
+			bmu = get_best_matching_unit(codebooks, row)
+			for i in range(len(row)-1):
+				error = row[i] - bmu[i]
+				if bmu[-1] == row[-1]:
+					bmu[i] += rate * error
+				else:
+					bmu[i] -= rate * error
+	return codebooks
+
+# LVQ Algorithm
+def learning_vector_quantization(train, test, n_codebooks, lrate, epochs):
+	codebooks = train_codebooks(train, n_codebooks, lrate, epochs)
+	predictions = list()
+	for row in test:
+		output = predict(codebooks, row)
+		predictions.append(output)
+	return(predictions)
+
+# Test LVQ on  dataset
+seed(1)
+# load and prepare data
+filename = 'Realestate.csv'
+dataset = load_csv(filename)
+for i in range(len(dataset[0])-1):
+	str_column_to_float(dataset, i)
+# convert class column to integers
+str_column_to_int(dataset, len(dataset[0])-1)
+# evaluate algorithm
+n_folds = 50
+learn_rate = 0.001
+n_epochs = 500
+n_codebooks = 200
+scores = evaluate_algorithm(dataset, learning_vector_quantization, n_folds, n_codebooks, learn_rate, n_epochs)
+print('Scores: %s' % scores)
+print('Mean Accuracy: %.3f%%' % (sum(scores)/float(len(scores))))
+
+
+#########################################################################################
+##########################################################################################
+###########################################################################################
+
+#As usual we start importing a number of libraries that will be come in handy later on
+import numpy as np 
+import pandas as pd 
+import seaborn as sns
+from imageio import imwrite
+#from scipy.misc import imsave
+import matplotlib
+import matplotlib.pyplot as plt
+from matplotlib.offsetbox import OffsetImage, AnnotationBbox
+from matplotlib.cbook import get_sample_data
+%matplotlib inline
+
+import plotly.offline as py
+py.init_notebook_mode(connected=True)
+import plotly.graph_objs as go
+import plotly.tools as tls
+
+from sklearn.preprocessing import StandardScaler
+from PIL import Image, ImageChops
+
+np.random.seed(0)
+
+#We load here the data from the provided training set, we randomly select 500 landmark points and separate the labels. 
+train = pd.read_csv('Realestate.csv')
+train = train.sample(n=500, random_state=0)
+labels = train['label']
+train = train.drop("label",axis=1)
+
+#Let's plot the distribution and see if the distribution is uniform
+sns.distplot(labels.values,bins=np.arange(-0.5,10.5,1))
+
+#Then we normalize the data, a crucial step to the correct functioning of the SOM algorithm
+trainSt = StandardScaler().fit_transform(train.values)
